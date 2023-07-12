@@ -1,48 +1,64 @@
+"""
+Convert the output of the QuPath script 'Export cell and nucleus measurements' to a CSV file.
+"""
 import glob
-import os
 import pandas as pd
-import numpy as np
+from IPython.display import display
 
-# list to save results
+nucleus_columns = [
+    "Nucleus: Area", "Nucleus: Perimeter", "Nucleus: Circularity",
+    "Nucleus: Max caliper", "Nucleus: Min caliper", "Nucleus: Eccentricity",
+    "Nucleus: Hematoxylin OD mean", "Nucleus: Hematoxylin OD sum",
+    "Nucleus: Hematoxylin OD std dev", "Nucleus: Hematoxylin OD max",
+    "Nucleus: Hematoxylin OD min", "Nucleus: Hematoxylin OD range",
+    "Nucleus: Eosin OD mean", "Nucleus: Eosin OD sum", "Nucleus: Eosin OD std dev",
+    "Nucleus: Eosin OD max", "Nucleus: Eosin OD min", "Nucleus: Eosin OD range",
+    "Cell: Area", "Cell: Perimeter", "Cell: Circularity", "Cell: Max caliper",
+    "Cell: Min caliper", "Cell: Eccentricity", "Cell: Hematoxylin OD mean",
+    "Cell: Hematoxylin OD std dev", "Cell: Hematoxylin OD max", "Cell: Hematoxylin OD min",
+    "Cell: Eosin OD mean", "Cell: Eosin OD std dev", "Cell: Eosin OD max", "Cell: Eosin OD min",
+    "Cytoplasm: Hematoxylin OD mean", "Cytoplasm: Hematoxylin OD std dev", 
+    "Cytoplasm: Hematoxylin OD max", "Cytoplasm: Hematoxylin OD min", "Cytoplasm: Eosin OD mean", 
+    "Cytoplasm: Eosin OD std dev", "Cytoplasm: Eosin OD max", "Cytoplasm: Eosin OD min", 
+    "Nucleus/Cell area ratio"
+    ]
+
 results = []
 
-# get all txt files
 files = glob.glob("*.txt")
 
-# for each file
+results = []
+
 for file in files:
-    # load data in chunks
-    chunks = pd.read_csv(file, sep="\t", chunksize=1000)
-    
-    # dictionary to count range frequency
-    ranges = {}
-    
-    for chunk in chunks:
-        # select nucleus related columns
-        nucleus_columns = chunk.columns[chunk.columns.str.startswith('Nucleus')]
-        nucleus_data = chunk[nucleus_columns]
-        
-        # calculate ranges and their frequency
-        for column in nucleus_data.columns:
-            # round to the nearest 10 to define range
-            rounded_values = np.round(nucleus_data[column]/10)*10
-            value_counts = rounded_values.value_counts()
-            for range_start, count in value_counts.items():
-                range_str = f'{int(range_start)}-{int(range_start+10)}'
-                if range_str not in ranges:
-                    ranges[range_str] = count
-                else:
-                    ranges[range_str] += count
+    df = pd.read_csv(file, sep="\t")
 
-    # get most frequent range
-    most_frequent_range = max(ranges, key=ranges.get)
-    most_frequent_count = ranges[most_frequent_range]
+    for column in nucleus_columns:
+        if column not in df.columns:
+            raise ValueError(f"Column '{column}' not found in file: {file}")
 
-    # append result
-    results.append([os.path.splitext(file)[0], most_frequent_range, most_frequent_count])
+    column_edges = []
+    for column in nucleus_columns:
+        bins = pd.cut(df[column], bins=16)
+        bin_counts = bins.value_counts().sort_index()
 
-# create dataframe
-df = pd.DataFrame(results, columns=['Image Name', 'Most_Frequent_Range', 'Count'])
+        max_count_bin = bin_counts.idxmax()
 
-# save to csv
+        left_edge = max_count_bin.left
+        right_edge = max_count_bin.right
+
+        column_edges.extend([left_edge, right_edge])
+
+    results.append([df["Image"].iloc[0]] + column_edges)
+
+df = pd.DataFrame(results, columns=['Image'] +
+                  [f for sublist in [(f'{col} Left Edge',
+                                      f'{col} Right Edge') 
+                                     for col in nucleus_columns] for f in sublist])
+
+display(df)
+
 df.to_csv('results.csv', index=False)
+
+df = pd.read_csv('results.csv')
+
+display(df)
